@@ -40,7 +40,8 @@ from albumentations import (
 )
 
 def get_device():
-    """Get a device object to run torch on accelerated hardware
+    """
+    Get a device object to run torch on accelerated hardware
 
     Returns:
         pytorch device: the most powerful device available
@@ -216,7 +217,8 @@ def aug_train(p=1):
                     RandomBrightnessContrast(p=0.3), 
                     RandomGamma(p=0.3), 
                     OneOf([HueSaturationValue(hue_shift_limit=20, sat_shift_limit=0.1, val_shift_limit=0.1, p=0.3), 
-                           ChannelShuffle(p=0.3), CLAHE(p=0.3)])], p=p)
+                           ChannelShuffle(p=0.3), 
+                           CLAHE(p=0.3)])], p=p)
 
 def aug_val(p=1):
     return Compose([
@@ -233,7 +235,6 @@ class DataGenerator(data.Dataset):
         imdir: path tpo folder with images
     """
     def __init__(self, ids, labels, augment, imdir):
-        'Initialization'
         self.ids, self.labels = ids, labels
         self.augment = augment
         self.imdir = imdir
@@ -241,22 +242,38 @@ class DataGenerator(data.Dataset):
     def __len__(self):
         return len(self.ids) 
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx): # un singolo item!
         imid = self.ids[idx]
         y = self.labels[idx]
         X = self.__load_image(imid) # brutto nome, possiamo cambiarlo?
-        return X, np.expand_dims(y,0)
+
+        #return X, np.expand_dims(y,0)
+        
+        # Modifica per bilanciare le classi, chiedete a chat gpt
+        if y == 0:
+            num_augmentations = 15
+        else:
+            num_augmentations = 10
+
+        augmented_images = [self.augment(image=X) for _ in range(num_augmentations)]
+        augmented_images = [augmented['image'] / 255.0 for augmented in augmented_images]
+        augmented_images = [np.rollaxis(im, -1) for im in augmented_images]
+
+        return augmented_images, np.expand_dims(y, 0)
+
 
     def __load_image(self, imid): # brutto nome, possiamo cambiarlo?
         imid = imid+'.tif'
         im = imread(os.path.join(self.imdir, imid))
         
-        augmented = self.augment(image=im)
-        im = augmented['image']
+        # I seguenti commentati perchè spostati nella roba prima
+        #augmented = self.augment(image=im)
+
+        #im = augmented['image']
         
         # Min max normalization Normalization
-        im = im/255.0
-        im = np.rollaxis(im, -1)
+        #im = im/255.0
+        #im = np.rollaxis(im, -1)
         return im     
     
 
