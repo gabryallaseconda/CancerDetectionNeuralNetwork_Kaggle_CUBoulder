@@ -94,15 +94,16 @@ def train(model, train_loader, optimizer, epoch, log_interval, loss_f, samples_p
         # AZZERA IL GRADIENTE NELL'OTTIMIZZATORE
         optimizer.zero_grad()
         
-        output = model(x.to(device, dtype=torch.float))
+        output = model(x.to(device, dtype=torch.float)).squeeze(dim = 1)
         loss = loss_f(output, target.to(device, dtype=torch.float))
         losses.append(loss.item())
         loss.backward() # PASSO BACKWARD
 
-        nn.utils.clip_grad_norm(model.parameters(), 4) # 4 IS THE MAX NORM. THE GRADIENT IS CLIPPED
+        nn.utils.clip_grad_norm_(model.parameters(), max_norm=4) # 4 IS THE MAX NORM. THE GRADIENT IS CLIPPED
 
         # SCHEDULER PER CYCLIC L R
-        scheduler.step()
+        if scheduler:
+            scheduler.step()
 
         
         # PLOTTING LOGS
@@ -141,7 +142,7 @@ def test(model, test_loader, loss_f):
     # INFERENCE
     with torch.no_grad(): # DO NO TRACK THE GRADIENT DURING THE FOLLOWING OPERATIONS
         for x, target in test_loader: # QUI SI VA PER BATCH!
-            output = model(x.to(device, dtype=torch.float))
+            output = model(x.to(device, dtype=torch.float)).squeeze(dim = 1)
             test_loss.append(loss_f(output, target.to(device, dtype=torch.float)).item())
             # RACCOLGO LE PREVIZIONI NELLA CPU           
             predictions.append(output.cpu())
@@ -250,16 +251,21 @@ class DataGenerator(data.Dataset):
         #return X, np.expand_dims(y,0)
         
         # Modifica per bilanciare le classi, chiedete a chat gpt
-        if y == 0:
-            num_augmentations = 15
-        else:
-            num_augmentations = 10
+        #if y == 0:
+        #    num_augmentations = 15
+        #else:
+        #    num_augmentations = 10
+
+        num_augmentations = 1 # LOOL
 
         augmented_images = [self.augment(image=X) for _ in range(num_augmentations)]
         augmented_images = [augmented['image'] / 255.0 for augmented in augmented_images]
-        augmented_images = [np.rollaxis(im, -1) for im in augmented_images]
+        #augmented_images = [np.rollaxis(im, -1) for im in augmented_images]
 
-        return augmented_images, np.expand_dims(y, 0)
+        #return augmented_images, np.expand_dims(y, 0)
+
+        augmented_images = [transforms.ToTensor()(im) for im in augmented_images][0] # LOOL
+        return augmented_images, torch.tensor(y, dtype = torch.float32)
 
 
     def __load_image(self, imid): # brutto nome, possiamo cambiarlo?

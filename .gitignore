@@ -3,3 +3,7 @@ study/
 runs/
 
 /histopathologic-cancer-detection.zip
+
+**/__pycache__/
+
+data_augmented
