@@ -57,7 +57,7 @@ def get_device():
 
 
 
-def train(model, train_loader, optimizer, epoch, log_interval, loss_f, scheduler, device = get_device(), samples_per_epoch = None):
+def train(model, train_loader, optimizer, epoch, log_interval, loss_f, scheduler, device, samples_per_epoch = None):
     """Trains the model using the provided optimizer and loss function.
     Shows output each log_interval iterations 
     Args:
@@ -102,9 +102,11 @@ def train(model, train_loader, optimizer, epoch, log_interval, loss_f, scheduler
         
         # PLOTTING LOGS
         if batch_idx % log_interval == 0:
-        #    print('Train Epoch: {} [{}/{} ({:.3f}%)]\tLoss: {:.6f}'.format(
-        #        epoch, batch_idx * len(x), samples_per_epoch,
-        #        100. * batch_idx * len(x) / samples_per_epoch, np.mean(losses)))
+            print('Train Epoch: {} [{}] \tLoss: {:.6f}'.format(
+                        epoch, 
+                        batch_idx * len(x), 
+                        np.mean(losses))
+                        )
             total_losses.append(np.mean(losses))
             losses = []
 
@@ -113,7 +115,7 @@ def train(model, train_loader, optimizer, epoch, log_interval, loss_f, scheduler
     return train_loss_mean
 
 
-def test(model, test_loader, loss_f, device = get_device()):
+def test(model, test_loader, loss_f, device):
     """Test the model with validation data.
     Args:
         model: Pytorch model to test data with.
@@ -142,12 +144,10 @@ def test(model, test_loader, loss_f, device = get_device()):
             # RACCOLGO I VALORI REALI NELLA CPU
             targets.append(target.cpu())
     
-    # IMPILO IN UN ARRAY UNIDIMENSIONALE
-    print('OK!')
-    with open('variabile_incriminata_targets.pkl', 'wb') as file:
-        pickle.dump(targets, file)
-    print('OK!')
     
+    # Here we have a problem. We cannot use vstack because batches has different dimension.
+    # We should check the cause for this and look for a solution 
+
     #predictions = np.vstack(predictions)
     #targets = np.vstack(targets)
 
@@ -250,46 +250,31 @@ class DataGenerator(data.Dataset):
     def __len__(self):
         return len(self.ids) 
 
-    def __getitem__(self, idx): # un singolo item!
+    def __getitem__(self, idx): 
         imid = self.ids[idx]
         y = self.labels[idx]
-        X = self.__load_image(imid) # brutto nome, possiamo cambiarlo?
+        X = self.load_image(imid) 
 
-        #return X, np.expand_dims(y,0)
-        
-        # Modifica per bilanciare le classi, chiedete a chat gpt
+        # Different augmentations strategies depending on the label
+        # This is the strategy to balance the classes
         if y == 0:
             num_augmentations = 15
         else:
             num_augmentations = 10
 
-        #num_augmentations = 1 # LOOL
-
         augmented_images = [self.augment(image=X) for _ in range(num_augmentations)]
         augmented_images = [augmented['image'] / 255.0 for augmented in augmented_images]
-        #augmented_images = [np.rollaxis(im, -1) for im in augmented_images]
-
-        #return augmented_images, np.expand_dims(y, 0)
 
         augmented_images = [transforms.ToTensor()(im) for im in augmented_images][0] # LOOL
         return augmented_images, torch.tensor(y, dtype = torch.float32)
 
 
-    def __load_image(self, imid): # brutto nome, possiamo cambiarlo?
+    def load_image(self, imid): 
         imid = imid+'.tif'
         im = imread(os.path.join(self.imdir, imid))
         
-        # I seguenti commentati perchè spostati nella roba prima
-        #augmented = self.augment(image=im)
-
-        #im = augmented['image']
-        
-        # Min max normalization Normalization
-        #im = im/255.0
-        #im = np.rollaxis(im, -1)
         return im     
     
-
 
 
 def produce_test_time_augmentation(image, number):

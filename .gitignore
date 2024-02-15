@@ -4,6 +4,8 @@ runs/
 old/
 model_saved/
 this_model/
+cross_validation_logs/
+trained_model/
 
 /histopathologic-cancer-detection.zip
 
