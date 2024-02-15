@@ -12,3 +12,7 @@ trained_model/
 **/__pycache__/
 
 data_augmented
+
+.DS_Store
+
+variabile*
