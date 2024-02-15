@@ -1,5 +1,6 @@
 
 import os
+import pickle 
 
 import numpy as np
 
@@ -15,14 +16,6 @@ from torch.optim import Optimizer
 from torch.utils import data
 from torch.utils.data.sampler import WeightedRandomSampler, BatchSampler
 
-# AGGIUNGERE ANCHE IL CYCLING LEARNING RATE
-#optimizer = torch.optim.SGD(model.parameters(), lr=0.1, momentum=0.9)
-#scheduler = torch.optim.lr_scheduler.CyclicLR(optimizer, base_lr=0.01, max_lr=0.1)
-#for epoch in range(10):
-##data_loader = torch.utils.data.DataLoader(...)
-#    for batch in data_loader:
-#        train_batch(...)
-#        scheduler.step()
 
 
 import pretrainedmodels
@@ -64,7 +57,7 @@ def get_device():
 
 
 
-def train(model, train_loader, optimizer, epoch, log_interval, loss_f, samples_per_epoch, scheduler):
+def train(model, train_loader, optimizer, epoch, log_interval, loss_f, scheduler, device = get_device(), samples_per_epoch = None):
     """Trains the model using the provided optimizer and loss function.
     Shows output each log_interval iterations 
     Args:
@@ -79,8 +72,7 @@ def train(model, train_loader, optimizer, epoch, log_interval, loss_f, samples_p
     Returns:
         The mean loss across the epochs
     """
-    # SET THE DEVICE
-    device = get_device()
+
 
     # MODALITà DI ADDESTRAMENTO
     model.train()
@@ -101,6 +93,8 @@ def train(model, train_loader, optimizer, epoch, log_interval, loss_f, samples_p
 
         nn.utils.clip_grad_norm_(model.parameters(), max_norm=4) # 4 IS THE MAX NORM. THE GRADIENT IS CLIPPED
 
+        optimizer.step()
+
         # SCHEDULER PER CYCLIC L R
         if scheduler:
             scheduler.step()
@@ -108,9 +102,9 @@ def train(model, train_loader, optimizer, epoch, log_interval, loss_f, samples_p
         
         # PLOTTING LOGS
         if batch_idx % log_interval == 0:
-            print('Train Epoch: {} [{}/{} ({:.3f}%)]\tLoss: {:.6f}'.format(
-                epoch, batch_idx * len(x), samples_per_epoch,
-                100. * batch_idx * len(x) / samples_per_epoch, np.mean(losses)))
+        #    print('Train Epoch: {} [{}/{} ({:.3f}%)]\tLoss: {:.6f}'.format(
+        #        epoch, batch_idx * len(x), samples_per_epoch,
+        #        100. * batch_idx * len(x) / samples_per_epoch, np.mean(losses)))
             total_losses.append(np.mean(losses))
             losses = []
 
@@ -119,7 +113,7 @@ def train(model, train_loader, optimizer, epoch, log_interval, loss_f, samples_p
     return train_loss_mean
 
 
-def test(model, test_loader, loss_f):
+def test(model, test_loader, loss_f, device = get_device()):
     """Test the model with validation data.
     Args:
         model: Pytorch model to test data with.
@@ -127,8 +121,7 @@ def test(model, test_loader, loss_f):
         loss_f: Loss function.
     """
     
-    # SET THE DEVICE
-    device = get_device()
+
 
     # MODALITà DI VALUTAZIONE
     model.eval()
@@ -150,11 +143,24 @@ def test(model, test_loader, loss_f):
             targets.append(target.cpu())
     
     # IMPILO IN UN ARRAY UNIDIMENSIONALE
-    predictions = np.vstack(predictions)
-    targets = np.vstack(targets)
+    print('OK!')
+    with open('variabile_incriminata_targets.pkl', 'wb') as file:
+        pickle.dump(targets, file)
+    print('OK!')
+    
+    #predictions = np.vstack(predictions)
+    #targets = np.vstack(targets)
+
+    predictions_flattened = []
+    for pr in predictions:
+        predictions_flattened.extend(pr)
+
+    targets_flattened = []
+    for tar in targets:
+        targets_flattened.extend(tar)
 
     # CALCOLO LO SCORE
-    score = roc_auc_score(targets, predictions)
+    score = roc_auc_score(targets_flattened, predictions_flattened)
 
     # PRINTO LA MEDIA DELLA PERDITA
     test_loss  = np.mean(test_loss)
@@ -219,7 +225,8 @@ def aug_train(p=1):
                     RandomGamma(p=0.3), 
                     OneOf([HueSaturationValue(hue_shift_limit=20, sat_shift_limit=0.1, val_shift_limit=0.1, p=0.3), 
                            ChannelShuffle(p=0.3), 
-                           CLAHE(p=0.3)])], p=p)
+                           CLAHE(p=0.3)])
+                    ], p=p)
 
 def aug_val(p=1):
     return Compose([
@@ -251,12 +258,12 @@ class DataGenerator(data.Dataset):
         #return X, np.expand_dims(y,0)
         
         # Modifica per bilanciare le classi, chiedete a chat gpt
-        #if y == 0:
-        #    num_augmentations = 15
-        #else:
-        #    num_augmentations = 10
+        if y == 0:
+            num_augmentations = 15
+        else:
+            num_augmentations = 10
 
-        num_augmentations = 1 # LOOL
+        #num_augmentations = 1 # LOOL
 
         augmented_images = [self.augment(image=X) for _ in range(num_augmentations)]
         augmented_images = [augmented['image'] / 255.0 for augmented in augmented_images]
@@ -283,49 +290,92 @@ class DataGenerator(data.Dataset):
         return im     
     
 
+
+
+def produce_test_time_augmentation(image, number):
+
+    # Set the augmentation
+    augmentation = Compose([HorizontalFlip(p=0.5),  # Perchè non c'è il resize????
+                    VerticalFlip(p=0.5), 
+                    RandomRotate90(), 
+                    Transpose(),   # Che cos'è?
+                    RandomBrightnessContrast(p=0.3), 
+                    RandomGamma(p=0.3), 
+                    OneOf([HueSaturationValue(hue_shift_limit=20, sat_shift_limit=0.1, val_shift_limit=0.1, p=0.3), 
+                           ChannelShuffle(p=0.3), 
+                           CLAHE(p=0.3)])
+                    ], p=1)
+
+    # Initialize images vector
+    images = np.zeros((number, image.shape[0], image.shape[1], 3))
+
+    # First image (original)
+    images[0] = image/255.0
+
+    # Others
+    for i in range(1, number):
+        images[i] = augmentation(image = image)['image'] / 255.0
+
+    # Switch axis
+    return np.moveaxis(images, -1, 1)
+
+
+
+
+
 #######
 ### TEST TIME AUGMENTATION
     
 
-def make_tta(image):
-    '''
-    return 4 pictures  - original, 3*90 rotations, mirror
-    '''
-    image_tta = np.zeros((4, image.shape[0], image.shape[1], 3))
-    image_tta[0] = image
-    aug = HorizontalFlip(p=1)
-    image_aug = aug(image=image)['image']
-    image_tta[1] = image_aug
-    aug = VerticalFlip(p=1)
-    image_aug = aug(image=image)['image']
-    image_tta[2] = image_aug
-    aug = Transpose(p=1)
-    image_aug = aug(image=image)['image']
-    image_tta[3] = image_aug    
-    image_tta = np.rollaxis(image_tta, -1, 1)
-    return image_tta
+# def make_tta(image):
+#     '''
+#     return 4 pictures  - original, 3*90 rotations, mirror
+#     '''
+#     image_tta = np.zeros((4, image.shape[0], image.shape[1], 3))
+#     image_tta[0] = image
+    
+#     aug = HorizontalFlip(p=1)
+#     image_aug = aug(image=image)['image']
+#     image_tta[1] = image_aug
+    
+#     aug = VerticalFlip(p=1)
+#     image_aug = aug(image=image)['image']
+#     image_tta[2] = image_aug
+    
+#     aug = Transpose(p=1)
+#     image_aug = aug(image=image)['image']
+#     image_tta[3] = image_aug    
+    
+#     image_tta = np.rollaxis(image_tta, -1, 1)
+    
+#     return image_tta
 
 
-def aug_train_heavy(p=1):
-    return Compose([HorizontalFlip(), 
-                    VerticalFlip(), 
-                    RandomRotate90(), 
-                    Transpose(), 
-                    RandomBrightnessContrast(p=0.3), 
-                    RandomGamma(p=0.3), 
-                    OneOf([
-                        HueSaturationValue(hue_shift_limit=20, sat_shift_limit=0.1, val_shift_limit=0.1, p=0.3), 
-                        ChannelShuffle(p=0.3)])], 
-                    p=p)
+# def aug_train_heavy(p=1):
+#     return Compose([HorizontalFlip(), 
+#                     VerticalFlip(), 
+#                     RandomRotate90(), 
+#                     Transpose(), 
+#                     RandomBrightnessContrast(p=0.3), 
+#                     RandomGamma(p=0.3), 
+#                     OneOf([
+#                         HueSaturationValue(hue_shift_limit=20, sat_shift_limit=0.1, val_shift_limit=0.1, p=0.3), 
+#                         ChannelShuffle(p=0.3)])], 
+#                     p=p)
 
-heavy_tta = aug_train_heavy()
+# heavy_tta = aug_train_heavy()
 
-def make_tta_heavy(image, n_images=12):
-    image_tta = np.zeros((n_images, image.shape[0], image.shape[1], 3))
-    image_tta[0] = image/255.0
-    for i in range(1,n_images):
-        image_aug = heavy_tta(image=image)['image']
-        image_tta[i] = image_aug/255.0
-    image_tta = np.rollaxis(image_tta, -1, 1)
-    return image_tta 
+# def make_tta_heavy(image, n_images=12):
+    
+#     image_tta = np.zeros((n_images, image.shape[0], image.shape[1], 3))
+    
+#     image_tta[0] = image/255.0
+    
+#     for i in range(1,n_images):
+#         image_aug = heavy_tta(image=image)['image']
+#         image_tta[i] = image_aug/255.0
+    
+#     image_tta = np.rollaxis(image_tta, -1, 1)
+    
+#     return image_tta 
 

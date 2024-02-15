@@ -1,6 +1,9 @@
 histopathologic-cancer-detection/
 study/
 runs/
+old/
+model_saved/
+this_model/
 
 /histopathologic-cancer-detection.zip
 
