@@ -1,35 +1,52 @@
-
+# Python stl
 import os
-import pickle 
 
+# Data tools
 import numpy as np
-
 from sklearn.metrics import roc_auc_score
 
+# Pytorch
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.optim as optim
-from torch.autograd import Variable
-from torchvision import datasets, transforms
-from torch.optim import Optimizer
+from torchvision import transforms
 from torch.utils import data
-from torch.utils.data.sampler import WeightedRandomSampler, BatchSampler
 
-
-
-import pretrainedmodels
-import pretrainedmodels.utils as utils
-
-import cv2
-
+# Image manipulation tools
 from skimage.io import imread
-
 from albumentations import (
-    HorizontalFlip, VerticalFlip, IAAPerspective, ShiftScaleRotate, CLAHE, RandomRotate90, Normalize, RandomGamma, RandomBrightnessContrast, HueSaturationValue, CLAHE, ChannelShuffle, 
-    Transpose, ShiftScaleRotate, Blur, OpticalDistortion, GridDistortion, HueSaturationValue,
-    IAAAdditiveGaussianNoise, GaussNoise, MotionBlur, MedianBlur, IAAPiecewiseAffine,
-    IAASharpen, IAAEmboss, RandomContrast, RandomBrightness, Flip, OneOf, Compose, PadIfNeeded, RandomCrop, Resize
+    HorizontalFlip, 
+    VerticalFlip, 
+    IAAPerspective, 
+    ShiftScaleRotate, 
+    CLAHE, 
+    RandomRotate90, 
+    Normalize, 
+    RandomGamma, 
+    RandomBrightnessContrast, 
+    HueSaturationValue, 
+    ChannelShuffle, 
+    Transpose, 
+    ShiftScaleRotate, 
+    Blur, 
+    OpticalDistortion, 
+    GridDistortion, 
+    HueSaturationValue,
+    IAAAdditiveGaussianNoise, 
+    GaussNoise, 
+    MotionBlur, 
+    MedianBlur, 
+    IAAPiecewiseAffine,
+    IAASharpen, 
+    IAAEmboss, 
+    RandomContrast, 
+    RandomBrightness, 
+    Flip, 
+    OneOf, 
+    Compose, 
+    PadIfNeeded, 
+    RandomCrop, 
+    Resize
 )
 
 def get_device():
@@ -277,25 +294,57 @@ class DataGenerator(data.Dataset):
     
 
 
+class DataGeneratorInference(data.Dataset):
+    """Generates dataset for loading inference data.
+    Args:
+        ids: images ids
+        labels: labels of images (1/0)
+        augment: image augmentation from albumentations
+        imdir: path tpo folder with images
+    """
+    def __init__(self, ids, imdir):
+        self.ids = ids
+        self.imdir = imdir
+        
+    def __len__(self):
+        return len(self.ids) 
+
+    def __getitem__(self, idx): 
+        
+        imid = self.ids[idx]
+        imid = imid+'.tif'
+        image = imread(os.path.join(self.imdir, imid))
+
+        # Format manipulation
+        image = transforms.ToTensor()(image)
+        image =  torch.tensor(image, dtype = torch.float32)
+
+        return image
+
+
+
 def produce_test_time_augmentation(image, number):
 
     # Set the augmentation
-    augmentation = Compose([HorizontalFlip(p=0.5),  # Perchè non c'è il resize????
-                    VerticalFlip(p=0.5), 
-                    RandomRotate90(), 
-                    Transpose(),   # Che cos'è?
-                    RandomBrightnessContrast(p=0.3), 
-                    RandomGamma(p=0.3), 
-                    OneOf([HueSaturationValue(hue_shift_limit=20, sat_shift_limit=0.1, val_shift_limit=0.1, p=0.3), 
-                           ChannelShuffle(p=0.3), 
-                           CLAHE(p=0.3)])
-                    ], p=1)
+    resize_only = Compose([Resize(224,224)], p=1)
+
+    augmentation = Compose([Resize(224, 224), 
+                            HorizontalFlip(p=0.5),  # Perchè non c'è il resize????
+                            VerticalFlip(p=0.5), 
+                            RandomRotate90(), 
+                            Transpose(),   # Che cos'è?
+                            RandomBrightnessContrast(p=0.3), 
+                            RandomGamma(p=0.3), 
+                            OneOf([     HueSaturationValue(hue_shift_limit=20, sat_shift_limit=0.1, val_shift_limit=0.1, p=0.3), 
+                                        ChannelShuffle(p=0.3), 
+                                        CLAHE(p=0.3)])
+                            ], p=1)
 
     # Initialize images vector
-    images = np.zeros((number, image.shape[0], image.shape[1], 3))
+    images = np.zeros((number, image.shape[0], image.shape[1], image.shape[2]))#3))
 
     # First image (original)
-    images[0] = image/255.0
+    images[0] = resize_only(image = image)['image']/255.0
 
     # Others
     for i in range(1, number):
@@ -303,64 +352,4 @@ def produce_test_time_augmentation(image, number):
 
     # Switch axis
     return np.moveaxis(images, -1, 1)
-
-
-
-
-
-#######
-### TEST TIME AUGMENTATION
-    
-
-# def make_tta(image):
-#     '''
-#     return 4 pictures  - original, 3*90 rotations, mirror
-#     '''
-#     image_tta = np.zeros((4, image.shape[0], image.shape[1], 3))
-#     image_tta[0] = image
-    
-#     aug = HorizontalFlip(p=1)
-#     image_aug = aug(image=image)['image']
-#     image_tta[1] = image_aug
-    
-#     aug = VerticalFlip(p=1)
-#     image_aug = aug(image=image)['image']
-#     image_tta[2] = image_aug
-    
-#     aug = Transpose(p=1)
-#     image_aug = aug(image=image)['image']
-#     image_tta[3] = image_aug    
-    
-#     image_tta = np.rollaxis(image_tta, -1, 1)
-    
-#     return image_tta
-
-
-# def aug_train_heavy(p=1):
-#     return Compose([HorizontalFlip(), 
-#                     VerticalFlip(), 
-#                     RandomRotate90(), 
-#                     Transpose(), 
-#                     RandomBrightnessContrast(p=0.3), 
-#                     RandomGamma(p=0.3), 
-#                     OneOf([
-#                         HueSaturationValue(hue_shift_limit=20, sat_shift_limit=0.1, val_shift_limit=0.1, p=0.3), 
-#                         ChannelShuffle(p=0.3)])], 
-#                     p=p)
-
-# heavy_tta = aug_train_heavy()
-
-# def make_tta_heavy(image, n_images=12):
-    
-#     image_tta = np.zeros((n_images, image.shape[0], image.shape[1], 3))
-    
-#     image_tta[0] = image/255.0
-    
-#     for i in range(1,n_images):
-#         image_aug = heavy_tta(image=image)['image']
-#         image_tta[i] = image_aug/255.0
-    
-#     image_tta = np.rollaxis(image_tta, -1, 1)
-    
-#     return image_tta 
 
