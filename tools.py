@@ -13,41 +13,49 @@ from torchvision import transforms
 from torch.utils import data
 
 # Image manipulation tools
-from skimage.io import imread
+#from skimage.io import imread
+from cv2 import imread, cvtColor, COLOR_BGR2RGB
 from albumentations import (
     HorizontalFlip, 
     VerticalFlip, 
-    IAAPerspective, 
-    ShiftScaleRotate, 
+    #IAAPerspective, 
+    #ShiftScaleRotate, 
     CLAHE, 
     RandomRotate90, 
-    Normalize, 
+    #Normalize, 
     RandomGamma, 
     RandomBrightnessContrast, 
     HueSaturationValue, 
     ChannelShuffle, 
     Transpose, 
-    ShiftScaleRotate, 
-    Blur, 
+    #ShiftScaleRotate, 
+    #Blur, 
     OpticalDistortion, 
     GridDistortion, 
     HueSaturationValue,
-    IAAAdditiveGaussianNoise, 
-    GaussNoise, 
-    MotionBlur, 
-    MedianBlur, 
-    IAAPiecewiseAffine,
-    IAASharpen, 
-    IAAEmboss, 
-    RandomContrast, 
-    RandomBrightness, 
-    Flip, 
+    #IAAAdditiveGaussianNoise, 
+    #GaussNoise, 
+    #MotionBlur, 
+    #MedianBlur, 
+    #IAAPiecewiseAffine,
+    #IAASharpen, 
+    #IAAEmboss, 
+    #RandomContrast, 
+    #RandomBrightness, 
+    #Flip, 
     OneOf, 
     Compose, 
-    PadIfNeeded, 
-    RandomCrop, 
+    #PadIfNeeded, 
+    #RandomCrop, 
     Resize
 )
+
+
+
+
+
+
+
 
 def get_device():
     """
@@ -99,7 +107,8 @@ def train(model, train_loader, optimizer, epoch, log_interval, loss_f, scheduler
     losses =[]
 
     # LOOP ON BATCHES, AS GIVEN BY THE LOADER
-    for batch_idx, (x, target) in enumerate(train_loader):
+    for batch_idx, (x, target) in enumerate(train_loader):     
+        
         # AZZERA IL GRADIENTE NELL'OTTIMIZZATORE
         optimizer.zero_grad()
         
@@ -116,7 +125,6 @@ def train(model, train_loader, optimizer, epoch, log_interval, loss_f, scheduler
         if scheduler:
             scheduler.step()
 
-        
         # PLOTTING LOGS
         if batch_idx % log_interval == 0:
             print('Train Epoch: {} [{}] \tLoss: {:.6f}'.format(
@@ -139,8 +147,6 @@ def test(model, test_loader, loss_f, device):
         test_loader: Data loader.
         loss_f: Loss function.
     """
-    
-
 
     # MODALITà DI VALUTAZIONE
     model.eval()
@@ -156,8 +162,10 @@ def test(model, test_loader, loss_f, device):
         for x, target in test_loader: # QUI SI VA PER BATCH!
             output = model(x.to(device, dtype=torch.float)).squeeze(dim = 1)
             test_loss.append(loss_f(output, target.to(device, dtype=torch.float)).item())
+            
             # RACCOLGO LE PREVIZIONI NELLA CPU           
             predictions.append(output.cpu())
+            
             # RACCOLGO I VALORI REALI NELLA CPU
             targets.append(target.cpu())
     
@@ -230,7 +238,6 @@ class Net(nn.Module):
 #####
 ## DATASET GENERATION, AUGMENTATION, LOADER
     
-
 def aug_train(p=1): 
     return Compose([Resize(224, 224), 
                     HorizontalFlip(), 
@@ -244,7 +251,7 @@ def aug_train(p=1):
                            ChannelShuffle(p=0.3), 
                            CLAHE(p=0.3)])
                     ], p=p)
-
+    
 def aug_val(p=1):
     return Compose([
         Resize(224, 224)
@@ -263,64 +270,69 @@ class DataGenerator(data.Dataset):
         self.ids, self.labels = ids, labels
         self.augment = augment
         self.imdir = imdir
-        
+                
     def __len__(self):
         return len(self.ids) 
 
     def __getitem__(self, idx): 
         imid = self.ids[idx]
-        y = self.labels[idx]
-        X = self.load_image(imid) 
-
+        label = self.labels[idx]
+        image = self.load_image(imid) 
+        
         # Different augmentations strategies depending on the label
         # This is the strategy to balance the classes
-        if y == 0:
+        if label == 0:
             num_augmentations = 15
         else:
             num_augmentations = 10
+            
+        #print(np.shape(image))
 
-        augmented_images = [self.augment(image=X) for _ in range(num_augmentations)]
+        # Augmentations
+        augmented_images = [self.augment(image=image) for _ in range(num_augmentations)]
+        #print(np.shape(augmented_images[1]['image']))
         augmented_images = [augmented['image'] / 255.0 for augmented in augmented_images]
-
         augmented_images = [transforms.ToTensor()(im) for im in augmented_images][0] # LOOL
-        return augmented_images, torch.tensor(y, dtype = torch.float32)
-
+        
+        return augmented_images, torch.tensor(label, dtype = torch.float32)
 
     def load_image(self, imid): 
         imid = imid+'.tif'
-        im = imread(os.path.join(self.imdir, imid))
+        image = imread(os.path.join(self.imdir, imid))
+        image = cvtColor(image, COLOR_BGR2RGB)
         
-        return im     
+        return image    
     
 
 
-class DataGeneratorInference(data.Dataset):
-    """Generates dataset for loading inference data.
-    Args:
-        ids: images ids
-        labels: labels of images (1/0)
-        augment: image augmentation from albumentations
-        imdir: path tpo folder with images
-    """
-    def __init__(self, ids, imdir):
-        self.ids = ids
-        self.imdir = imdir
+# class DataGeneratorInference(data.Dataset):
+#     """Generates dataset for loading inference data.
+#     Args:
+#         ids: images ids
+#         labels: labels of images (1/0)
+#         augment: image augmentation from albumentations
+#         imdir: path tpo folder with images
+#     """
+#     def __init__(self, ids, imdir):
+#         self.ids = ids
+#         self.imdir = imdir
+                
+#     def __len__(self):
+#         return len(self.ids) 
+
+#     def __getitem__(self, idx): 
+#         imid = self.ids[idx]
         
-    def __len__(self):
-        return len(self.ids) 
+#         image = self.load_image(imid)
+#         #image = transforms.ToTensor()(image)
 
-    def __getitem__(self, idx): 
-        
-        imid = self.ids[idx]
-        imid = imid+'.tif'
-        image = imread(os.path.join(self.imdir, imid))
-
-        # Format manipulation
-        image = transforms.ToTensor()(image)
-        image =  torch.tensor(image, dtype = torch.float32)
-
-        return image
-
+#         return imid, image
+    
+#     def load_image(self, imid): 
+#         imid = imid+'.tif'
+#         image = imread(os.path.join(self.imdir, imid))
+#         image = cvtColor(image, COLOR_BGR2RGB)
+#         return image    
 
 
 def produce_test_time_augmentation(image, number):
@@ -329,7 +341,7 @@ def produce_test_time_augmentation(image, number):
     resize_only = Compose([Resize(224,224)], p=1)
 
     augmentation = Compose([Resize(224, 224), 
-                            HorizontalFlip(p=0.5),  # Perchè non c'è il resize????
+                            HorizontalFlip(p=0.5),
                             VerticalFlip(p=0.5), 
                             RandomRotate90(), 
                             Transpose(),   # Che cos'è?
@@ -337,19 +349,26 @@ def produce_test_time_augmentation(image, number):
                             RandomGamma(p=0.3), 
                             OneOf([     HueSaturationValue(hue_shift_limit=20, sat_shift_limit=0.1, val_shift_limit=0.1, p=0.3), 
                                         ChannelShuffle(p=0.3), 
-                                        CLAHE(p=0.3)])
+                                        CLAHE(p=0.3),
+                                        ])
                             ], p=1)
 
     # Initialize images vector
-    images = np.zeros((number, image.shape[0], image.shape[1], image.shape[2]))#3))
+    #images = np.zeros((number, image.shape[0], image.shape[1], image.shape[2]))#3))
+    #images = np.zeros((number, 224, 224, 3))
+    images = np.zeros((number, 3, 224, 224))
+    
+    #image = np.moveaxis(image, 0,2)
 
     # First image (original)
-    images[0] = resize_only(image = image)['image']/255.0
+    augmented = resize_only(image = image)['image']/255.0
+    #images[0] = augmented #np.moveaxis(augmented, 2, 0)
+    images[0] = np.moveaxis(augmented, 2, 0)
 
     # Others
     for i in range(1, number):
-        images[i] = augmentation(image = image)['image'] / 255.0
+        augmented = augmentation(image = image)['image']/255.0
+        #images[i] = augmented #np.moveaxis(augmented, 2, 0)
+        images[i] = np.moveaxis(augmented, 2, 0)
 
-    # Switch axis
-    return np.moveaxis(images, -1, 1)
-
+    return images
